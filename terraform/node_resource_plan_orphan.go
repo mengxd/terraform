@@ -1,54 +1,86 @@
 package terraform
 
-// NodePlannableResourceOrphan represents a resource that is "applyable":
+import (
+	"github.com/hashicorp/terraform/plans"
+	"github.com/hashicorp/terraform/states"
+)
+
+// NodePlannableResourceInstanceOrphan represents a resource that is "applyable":
 // it is ready to be applied and is represented by a diff.
-type NodePlannableResourceOrphan struct {
-	*NodeAbstractResource
+type NodePlannableResourceInstanceOrphan struct {
+	*NodeAbstractResourceInstance
 }
 
-func (n *NodePlannableResourceOrphan) Name() string {
-	return n.NodeAbstractResource.Name() + " (orphan)"
+var (
+	_ GraphNodeModuleInstance       = (*NodePlannableResourceInstanceOrphan)(nil)
+	_ GraphNodeReferenceable        = (*NodePlannableResourceInstanceOrphan)(nil)
+	_ GraphNodeReferencer           = (*NodePlannableResourceInstanceOrphan)(nil)
+	_ GraphNodeConfigResource       = (*NodePlannableResourceInstanceOrphan)(nil)
+	_ GraphNodeResourceInstance     = (*NodePlannableResourceInstanceOrphan)(nil)
+	_ GraphNodeAttachResourceConfig = (*NodePlannableResourceInstanceOrphan)(nil)
+	_ GraphNodeAttachResourceState  = (*NodePlannableResourceInstanceOrphan)(nil)
+	_ GraphNodeExecutable           = (*NodePlannableResourceInstanceOrphan)(nil)
+)
+
+func (n *NodePlannableResourceInstanceOrphan) Name() string {
+	return n.ResourceInstanceAddr().String() + " (orphan)"
 }
 
-// GraphNodeEvalable
-func (n *NodePlannableResourceOrphan) EvalTree() EvalNode {
-	addr := n.NodeAbstractResource.Addr
-
-	// stateId is the ID to put into the state
-	stateId := addr.stateId()
-
-	// Build the instance info. More of this will be populated during eval
-	info := &InstanceInfo{
-		Id:         stateId,
-		Type:       addr.Type,
-		ModulePath: normalizeModulePath(addr.Path),
-	}
+// GraphNodeExecutable
+func (n *NodePlannableResourceInstanceOrphan) Execute(ctx EvalContext, op walkOperation) error {
+	addr := n.ResourceInstanceAddr()
 
 	// Declare a bunch of variables that are used for state during
-	// evaluation. Most of this are written to by-address below.
-	var diff *InstanceDiff
-	var state *InstanceState
+	// evaluation. These are written to by-address below.
+	var change *plans.ResourceInstanceChange
+	var state *states.ResourceInstanceObject
 
-	return &EvalSequence{
-		Nodes: []EvalNode{
-			&EvalReadState{
-				Name:   stateId,
-				Output: &state,
-			},
-			&EvalDiffDestroy{
-				Info:   info,
-				State:  &state,
-				Output: &diff,
-			},
-			&EvalCheckPreventDestroy{
-				Resource:   n.Config,
-				ResourceId: stateId,
-				Diff:       &diff,
-			},
-			&EvalWriteDiff{
-				Name: stateId,
-				Diff: &diff,
-			},
-		},
+	_, providerSchema, err := GetProvider(ctx, n.ResolvedProvider)
+	if err != nil {
+		return err
 	}
+
+	state, err = n.ReadResourceInstanceState(ctx, addr)
+	if err != nil {
+		return err
+	}
+
+	diffDestroy := &EvalDiffDestroy{
+		Addr:         addr.Resource,
+		State:        &state,
+		ProviderAddr: n.ResolvedProvider,
+		Output:       &change,
+		OutputState:  &state, // Will point to a nil state after this complete, signalling destroyed
+	}
+	_, err = diffDestroy.Eval(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = n.checkPreventDestroy(change)
+	if err != nil {
+		return err
+	}
+
+	writeDiff := &EvalWriteDiff{
+		Addr:           addr.Resource,
+		ProviderSchema: &providerSchema,
+		Change:         &change,
+	}
+	_, err = writeDiff.Eval(ctx)
+	if err != nil {
+		return err
+	}
+
+	writeState := &EvalWriteState{
+		Addr:           addr.Resource,
+		ProviderAddr:   n.ResolvedProvider,
+		ProviderSchema: &providerSchema,
+		State:          &state,
+	}
+	_, err = writeState.Eval(ctx)
+	if err != nil {
+		return err
+	}
+	return nil
 }

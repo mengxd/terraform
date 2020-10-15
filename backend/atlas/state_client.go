@@ -2,6 +2,7 @@ package atlas
 
 import (
 	"bytes"
+	"context"
 	"crypto/md5"
 	"crypto/tls"
 	"crypto/x509"
@@ -17,7 +18,7 @@ import (
 	"github.com/hashicorp/go-cleanhttp"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/hashicorp/go-rootcerts"
-	"github.com/hashicorp/terraform/state/remote"
+	"github.com/hashicorp/terraform/states/remote"
 	"github.com/hashicorp/terraform/terraform"
 )
 
@@ -231,7 +232,7 @@ func (c *stateClient) http() (*retryablehttp.Client, error) {
 	}
 	rc := retryablehttp.NewClient()
 
-	rc.CheckRetry = func(resp *http.Response, err error) (bool, error) {
+	rc.CheckRetry = func(ctx context.Context, resp *http.Response, err error) (bool, error) {
 		if err != nil {
 			// don't bother retrying if the certs don't match
 			if err, ok := err.(*url.Error); ok {
@@ -239,10 +240,8 @@ func (c *stateClient) http() (*retryablehttp.Client, error) {
 					return false, nil
 				}
 			}
-			// continue retrying
-			return true, nil
 		}
-		return retryablehttp.DefaultRetryPolicy(resp, err)
+		return retryablehttp.DefaultRetryPolicy(ctx, resp, err)
 	}
 
 	t := cleanhttp.DefaultTransport()

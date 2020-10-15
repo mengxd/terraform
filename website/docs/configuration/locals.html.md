@@ -1,92 +1,91 @@
 ---
 layout: "docs"
-page_title: "Configuring Local Values"
+page_title: "Local Values - Configuration Language"
 sidebar_current: "docs-config-locals"
 description: |-
   Local values assign a name to an expression that can then be used multiple times
   within a module.
 ---
 
-# Local Value Configuration
+# Local Values
 
-Local values assign a name to an expression, that can then be used multiple
-times within a module.
+-> **Note:** This page is about Terraform 0.12 and later. For Terraform 0.11 and
+earlier, see
+[0.11 Configuration Language: Local Values](../configuration-0-11/locals.html).
 
-Comparing modules to functions in a traditional programming language,
-if [variables](./variables.html) are analogous to function arguments and
-[outputs](./outputs.html) are analogous to function return values then
-_local values_ are comparable to a function's local variables.
+A local value assigns a name to an [expression](./expressions.html),
+so you can use it multiple times within a module without repeating
+it.
 
-This page assumes you're already familiar with
-[the configuration syntax](/docs/configuration/syntax.html).
+If you're familiar with traditional programming languages, it can be useful to
+compare Terraform modules to function definitions:
 
-## Examples
+- [Input variables](./variables.html) are like function arguments.
+- [Output values](./outputs.html) are like function return values.
+- Local values are like a function's temporary local variables.
 
-Local values are defined in `locals` blocks:
+-> **Note:** For brevity, local values are often referred to as just "locals"
+when the meaning is clear from context.
+
+## Declaring a Local Value
+
+A set of related local values can be declared together in a single `locals`
+block:
 
 ```hcl
-# Ids for multiple sets of EC2 instances, merged together
 locals {
-  instance_ids = "${concat(aws_instance.blue.*.id, aws_instance.green.*.id)}"
-}
-
-# A computed default name prefix
-locals {
-  default_name_prefix = "${var.project_name}-web"
-  name_prefix         = "${var.name_prefix != "" ? var.name_prefix : local.default_name_prefix}"
-}
-
-# Local values can be interpolated elsewhere using the "local." prefix.
-resource "aws_s3_bucket" "files" {
-  bucket = "${local.name_prefix}-files"
-  # ...
+  service_name = "forum"
+  owner        = "Community Team"
 }
 ```
 
-Named local maps can be merged with local maps to implement common or default
-values:
+The expressions in local values are not limited to literal constants; they can
+also reference other values in the module in order to transform or combine them,
+including variables, resource attributes, or other local values:
 
 ```hcl
-# Define the common tags for all resources
 locals {
+  # Ids for multiple sets of EC2 instances, merged together
+  instance_ids = concat(aws_instance.blue.*.id, aws_instance.green.*.id)
+}
+
+locals {
+  # Common tags to be assigned to all resources
   common_tags = {
-    Component   = "awesome-app"
-    Environment = "production"
+    Service = local.service_name
+    Owner   = local.owner
   }
 }
+```
 
-# Create a resource that blends the common tags with instance-specific tags.
-resource "aws_instance" "server" {
-  ami           = "ami-123456"
-  instance_type = "t2.micro"
+## Using Local Values
 
-  tags = "${merge(
-    local.common_tags,
-    map(
-      "Name", "awesome-app-server",
-      "Role", "server"
-    )
-  )}"
+Once a local value is declared, you can reference it in
+[expressions](./expressions.html) as `local.<NAME>`.
+
+-> **Note:** Local values are _created_ by a `locals` block (plural), but you
+_reference_ them as attributes on an object named `local` (singular). Make sure
+to leave off the "s" when referencing a local value!
+
+```
+resource "aws_instance" "example" {
+  # ...
+
+  tags = local.common_tags
 }
 ```
 
-## Description
+A local value can only be accessed in expressions within the module where it
+was declared.
 
-The `locals` block defines one or more local variables within a module.
-Each `locals` block can have as many locals as needed, and there can be any
-number of `locals` blocks within a module.
+## When To Use Local Values
 
-The names given for the items in the `locals` block must be unique throughout
-a module. The given value can be any expression that is valid within
-the current module.
+Local values can be helpful to avoid repeating the same values or expressions
+multiple times in a configuration, but if overused they can also make a
+configuration hard to read by future maintainers by hiding the actual values
+used.
 
-The expression of a local value can refer to other locals, but as usual
-reference cycles are not allowed. That is, a local cannot refer to itself
-or to a variable that refers (directly or indirectly) back to it.
-
-It's recommended to group together logically-related local values into
-a single block, particulary if they depend on each other. This will help
-the reader understand the relationships between variables. Conversely,
-prefer to define _unrelated_ local values in _separate_ blocks, and consider
-annotating each block with a comment describing any context common to all
-of the enclosed locals.
+Use local values only in moderation, in situations where a single value or
+result is used in many places _and_ that value is likely to be changed in
+future. The ability to easily change the value in a central place is the key
+advantage of local values.

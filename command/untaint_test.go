@@ -5,27 +5,29 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform/terraform"
+	"github.com/hashicorp/terraform/addrs"
+	"github.com/hashicorp/terraform/states"
 	"github.com/mitchellh/cli"
 )
 
 func TestUntaint(t *testing.T) {
-	state := &terraform.State{
-		Modules: []*terraform.ModuleState{
-			&terraform.ModuleState{
-				Path: []string{"root"},
-				Resources: map[string]*terraform.ResourceState{
-					"test_instance.foo": &terraform.ResourceState{
-						Type: "test_instance",
-						Primary: &terraform.InstanceState{
-							ID:      "bar",
-							Tainted: true,
-						},
-					},
-				},
+	state := states.BuildState(func(s *states.SyncState) {
+		s.SetResourceInstanceCurrent(
+			addrs.Resource{
+				Mode: addrs.ManagedResourceMode,
+				Type: "test_instance",
+				Name: "foo",
+			}.Instance(addrs.NoKey).Absolute(addrs.RootModuleInstance),
+			&states.ResourceInstanceObjectSrc{
+				AttrsJSON: []byte(`{"id":"bar"}`),
+				Status:    states.ObjectTainted,
 			},
-		},
-	}
+			addrs.AbsProviderConfig{
+				Provider: addrs.NewDefaultProvider("test"),
+				Module:   addrs.RootModule,
+			},
+		)
+	})
 	statePath := testStateFile(t, state)
 
 	ui := new(cli.MockUi)
@@ -46,29 +48,31 @@ func TestUntaint(t *testing.T) {
 	expected := strings.TrimSpace(`
 test_instance.foo:
   ID = bar
+  provider = provider["registry.terraform.io/hashicorp/test"]
 	`)
 	testStateOutput(t, statePath, expected)
 }
 
 func TestUntaint_lockedState(t *testing.T) {
-	state := &terraform.State{
-		Modules: []*terraform.ModuleState{
-			&terraform.ModuleState{
-				Path: []string{"root"},
-				Resources: map[string]*terraform.ResourceState{
-					"test_instance.foo": &terraform.ResourceState{
-						Type: "test_instance",
-						Primary: &terraform.InstanceState{
-							ID:      "bar",
-							Tainted: true,
-						},
-					},
-				},
+	state := states.BuildState(func(s *states.SyncState) {
+		s.SetResourceInstanceCurrent(
+			addrs.Resource{
+				Mode: addrs.ManagedResourceMode,
+				Type: "test_instance",
+				Name: "foo",
+			}.Instance(addrs.NoKey).Absolute(addrs.RootModuleInstance),
+			&states.ResourceInstanceObjectSrc{
+				AttrsJSON: []byte(`{"id":"bar"}`),
+				Status:    states.ObjectTainted,
 			},
-		},
-	}
+			addrs.AbsProviderConfig{
+				Provider: addrs.NewDefaultProvider("test"),
+				Module:   addrs.RootModule,
+			},
+		)
+	})
 	statePath := testStateFile(t, state)
-	unlock, err := testLockState("./testdata", statePath)
+	unlock, err := testLockState(testDataDir, statePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,23 +105,24 @@ func TestUntaint_backup(t *testing.T) {
 	defer testFixCwd(t, tmp, cwd)
 
 	// Write the temp state
-	state := &terraform.State{
-		Modules: []*terraform.ModuleState{
-			&terraform.ModuleState{
-				Path: []string{"root"},
-				Resources: map[string]*terraform.ResourceState{
-					"test_instance.foo": &terraform.ResourceState{
-						Type: "test_instance",
-						Primary: &terraform.InstanceState{
-							ID:      "bar",
-							Tainted: true,
-						},
-					},
-				},
+	state := states.BuildState(func(s *states.SyncState) {
+		s.SetResourceInstanceCurrent(
+			addrs.Resource{
+				Mode: addrs.ManagedResourceMode,
+				Type: "test_instance",
+				Name: "foo",
+			}.Instance(addrs.NoKey).Absolute(addrs.RootModuleInstance),
+			&states.ResourceInstanceObjectSrc{
+				AttrsJSON: []byte(`{"id":"bar"}`),
+				Status:    states.ObjectTainted,
 			},
-		},
-	}
-	path := testStateFileDefault(t, state)
+			addrs.AbsProviderConfig{
+				Provider: addrs.NewDefaultProvider("test"),
+				Module:   addrs.RootModule,
+			},
+		)
+	})
+	testStateFileDefault(t, state)
 
 	ui := new(cli.MockUi)
 	c := &UntaintCommand{
@@ -134,15 +139,17 @@ func TestUntaint_backup(t *testing.T) {
 	}
 
 	// Backup is still tainted
-	testStateOutput(t, path+".backup", strings.TrimSpace(`
+	testStateOutput(t, DefaultStateFilename+".backup", strings.TrimSpace(`
 test_instance.foo: (tainted)
   ID = bar
+  provider = provider["registry.terraform.io/hashicorp/test"]
 	`))
 
 	// State is untainted
-	testStateOutput(t, path, strings.TrimSpace(`
+	testStateOutput(t, DefaultStateFilename, strings.TrimSpace(`
 test_instance.foo:
   ID = bar
+  provider = provider["registry.terraform.io/hashicorp/test"]
 	`))
 }
 
@@ -152,23 +159,24 @@ func TestUntaint_backupDisable(t *testing.T) {
 	defer testFixCwd(t, tmp, cwd)
 
 	// Write the temp state
-	state := &terraform.State{
-		Modules: []*terraform.ModuleState{
-			&terraform.ModuleState{
-				Path: []string{"root"},
-				Resources: map[string]*terraform.ResourceState{
-					"test_instance.foo": &terraform.ResourceState{
-						Type: "test_instance",
-						Primary: &terraform.InstanceState{
-							ID:      "bar",
-							Tainted: true,
-						},
-					},
-				},
+	state := states.BuildState(func(s *states.SyncState) {
+		s.SetResourceInstanceCurrent(
+			addrs.Resource{
+				Mode: addrs.ManagedResourceMode,
+				Type: "test_instance",
+				Name: "foo",
+			}.Instance(addrs.NoKey).Absolute(addrs.RootModuleInstance),
+			&states.ResourceInstanceObjectSrc{
+				AttrsJSON: []byte(`{"id":"bar"}`),
+				Status:    states.ObjectTainted,
 			},
-		},
-	}
-	path := testStateFileDefault(t, state)
+			addrs.AbsProviderConfig{
+				Provider: addrs.NewDefaultProvider("test"),
+				Module:   addrs.RootModule,
+			},
+		)
+	})
+	testStateFileDefault(t, state)
 
 	ui := new(cli.MockUi)
 	c := &UntaintCommand{
@@ -185,13 +193,14 @@ func TestUntaint_backupDisable(t *testing.T) {
 		t.Fatalf("bad: %d\n\n%s", code, ui.ErrorWriter.String())
 	}
 
-	if _, err := os.Stat(path + ".backup"); err == nil {
+	if _, err := os.Stat(DefaultStateFilename + ".backup"); err == nil {
 		t.Fatal("backup path should not exist")
 	}
 
-	testStateOutput(t, path, strings.TrimSpace(`
+	testStateOutput(t, DefaultStateFilename, strings.TrimSpace(`
 test_instance.foo:
   ID = bar
+  provider = provider["registry.terraform.io/hashicorp/test"]
 	`))
 }
 
@@ -218,23 +227,24 @@ func TestUntaint_defaultState(t *testing.T) {
 	defer testFixCwd(t, tmp, cwd)
 
 	// Write the temp state
-	state := &terraform.State{
-		Modules: []*terraform.ModuleState{
-			&terraform.ModuleState{
-				Path: []string{"root"},
-				Resources: map[string]*terraform.ResourceState{
-					"test_instance.foo": &terraform.ResourceState{
-						Type: "test_instance",
-						Primary: &terraform.InstanceState{
-							ID:      "bar",
-							Tainted: true,
-						},
-					},
-				},
+	state := states.BuildState(func(s *states.SyncState) {
+		s.SetResourceInstanceCurrent(
+			addrs.Resource{
+				Mode: addrs.ManagedResourceMode,
+				Type: "test_instance",
+				Name: "foo",
+			}.Instance(addrs.NoKey).Absolute(addrs.RootModuleInstance),
+			&states.ResourceInstanceObjectSrc{
+				AttrsJSON: []byte(`{"id":"bar"}`),
+				Status:    states.ObjectTainted,
 			},
-		},
-	}
-	path := testStateFileDefault(t, state)
+			addrs.AbsProviderConfig{
+				Provider: addrs.NewDefaultProvider("test"),
+				Module:   addrs.RootModule,
+			},
+		)
+	})
+	testStateFileDefault(t, state)
 
 	ui := new(cli.MockUi)
 	c := &UntaintCommand{
@@ -250,29 +260,78 @@ func TestUntaint_defaultState(t *testing.T) {
 		t.Fatalf("bad: %d\n\n%s", code, ui.ErrorWriter.String())
 	}
 
+	testStateOutput(t, DefaultStateFilename, strings.TrimSpace(`
+test_instance.foo:
+  ID = bar
+  provider = provider["registry.terraform.io/hashicorp/test"]
+	`))
+}
+
+func TestUntaint_defaultWorkspaceState(t *testing.T) {
+	// Get a temp cwd
+	tmp, cwd := testCwd(t)
+	defer testFixCwd(t, tmp, cwd)
+
+	// Write the temp state
+	state := states.BuildState(func(s *states.SyncState) {
+		s.SetResourceInstanceCurrent(
+			addrs.Resource{
+				Mode: addrs.ManagedResourceMode,
+				Type: "test_instance",
+				Name: "foo",
+			}.Instance(addrs.NoKey).Absolute(addrs.RootModuleInstance),
+			&states.ResourceInstanceObjectSrc{
+				AttrsJSON: []byte(`{"id":"bar"}`),
+				Status:    states.ObjectTainted,
+			},
+			addrs.AbsProviderConfig{
+				Provider: addrs.NewDefaultProvider("test"),
+				Module:   addrs.RootModule,
+			},
+		)
+	})
+	testWorkspace := "development"
+	path := testStateFileWorkspaceDefault(t, testWorkspace, state)
+
+	ui := new(cli.MockUi)
+	meta := Meta{Ui: ui}
+	meta.SetWorkspace(testWorkspace)
+	c := &UntaintCommand{
+		Meta: meta,
+	}
+
+	args := []string{
+		"test_instance.foo",
+	}
+	if code := c.Run(args); code != 0 {
+		t.Fatalf("bad: %d\n\n%s", code, ui.ErrorWriter.String())
+	}
+
 	testStateOutput(t, path, strings.TrimSpace(`
 test_instance.foo:
   ID = bar
+  provider = provider["registry.terraform.io/hashicorp/test"]
 	`))
 }
 
 func TestUntaint_missing(t *testing.T) {
-	state := &terraform.State{
-		Modules: []*terraform.ModuleState{
-			&terraform.ModuleState{
-				Path: []string{"root"},
-				Resources: map[string]*terraform.ResourceState{
-					"test_instance.foo": &terraform.ResourceState{
-						Type: "test_instance",
-						Primary: &terraform.InstanceState{
-							ID:      "bar",
-							Tainted: true,
-						},
-					},
-				},
+	state := states.BuildState(func(s *states.SyncState) {
+		s.SetResourceInstanceCurrent(
+			addrs.Resource{
+				Mode: addrs.ManagedResourceMode,
+				Type: "test_instance",
+				Name: "foo",
+			}.Instance(addrs.NoKey).Absolute(addrs.RootModuleInstance),
+			&states.ResourceInstanceObjectSrc{
+				AttrsJSON: []byte(`{"id":"bar"}`),
+				Status:    states.ObjectTainted,
 			},
-		},
-	}
+			addrs.AbsProviderConfig{
+				Provider: addrs.NewDefaultProvider("test"),
+				Module:   addrs.RootModule,
+			},
+		)
+	})
 	statePath := testStateFile(t, state)
 
 	ui := new(cli.MockUi)
@@ -292,22 +351,23 @@ func TestUntaint_missing(t *testing.T) {
 }
 
 func TestUntaint_missingAllow(t *testing.T) {
-	state := &terraform.State{
-		Modules: []*terraform.ModuleState{
-			&terraform.ModuleState{
-				Path: []string{"root"},
-				Resources: map[string]*terraform.ResourceState{
-					"test_instance.foo": &terraform.ResourceState{
-						Type: "test_instance",
-						Primary: &terraform.InstanceState{
-							ID:      "bar",
-							Tainted: true,
-						},
-					},
-				},
+	state := states.BuildState(func(s *states.SyncState) {
+		s.SetResourceInstanceCurrent(
+			addrs.Resource{
+				Mode: addrs.ManagedResourceMode,
+				Type: "test_instance",
+				Name: "foo",
+			}.Instance(addrs.NoKey).Absolute(addrs.RootModuleInstance),
+			&states.ResourceInstanceObjectSrc{
+				AttrsJSON: []byte(`{"id":"bar"}`),
+				Status:    states.ObjectTainted,
 			},
-		},
-	}
+			addrs.AbsProviderConfig{
+				Provider: addrs.NewDefaultProvider("test"),
+				Module:   addrs.RootModule,
+			},
+		)
+	})
 	statePath := testStateFile(t, state)
 
 	ui := new(cli.MockUi)
@@ -333,23 +393,24 @@ func TestUntaint_stateOut(t *testing.T) {
 	defer testFixCwd(t, tmp, cwd)
 
 	// Write the temp state
-	state := &terraform.State{
-		Modules: []*terraform.ModuleState{
-			&terraform.ModuleState{
-				Path: []string{"root"},
-				Resources: map[string]*terraform.ResourceState{
-					"test_instance.foo": &terraform.ResourceState{
-						Type: "test_instance",
-						Primary: &terraform.InstanceState{
-							ID:      "bar",
-							Tainted: true,
-						},
-					},
-				},
+	state := states.BuildState(func(s *states.SyncState) {
+		s.SetResourceInstanceCurrent(
+			addrs.Resource{
+				Mode: addrs.ManagedResourceMode,
+				Type: "test_instance",
+				Name: "foo",
+			}.Instance(addrs.NoKey).Absolute(addrs.RootModuleInstance),
+			&states.ResourceInstanceObjectSrc{
+				AttrsJSON: []byte(`{"id":"bar"}`),
+				Status:    states.ObjectTainted,
 			},
-		},
-	}
-	path := testStateFileDefault(t, state)
+			addrs.AbsProviderConfig{
+				Provider: addrs.NewDefaultProvider("test"),
+				Module:   addrs.RootModule,
+			},
+		)
+	})
+	testStateFileDefault(t, state)
 
 	ui := new(cli.MockUi)
 	c := &UntaintCommand{
@@ -366,45 +427,51 @@ func TestUntaint_stateOut(t *testing.T) {
 		t.Fatalf("bad: %d\n\n%s", code, ui.ErrorWriter.String())
 	}
 
-	testStateOutput(t, path, strings.TrimSpace(`
+	testStateOutput(t, DefaultStateFilename, strings.TrimSpace(`
 test_instance.foo: (tainted)
   ID = bar
+  provider = provider["registry.terraform.io/hashicorp/test"]
 	`))
 	testStateOutput(t, "foo", strings.TrimSpace(`
 test_instance.foo:
   ID = bar
+  provider = provider["registry.terraform.io/hashicorp/test"]
 	`))
 }
 
 func TestUntaint_module(t *testing.T) {
-	state := &terraform.State{
-		Modules: []*terraform.ModuleState{
-			&terraform.ModuleState{
-				Path: []string{"root"},
-				Resources: map[string]*terraform.ResourceState{
-					"test_instance.foo": &terraform.ResourceState{
-						Type: "test_instance",
-						Primary: &terraform.InstanceState{
-							ID:      "bar",
-							Tainted: true,
-						},
-					},
-				},
+	state := states.BuildState(func(s *states.SyncState) {
+		s.SetResourceInstanceCurrent(
+			addrs.Resource{
+				Mode: addrs.ManagedResourceMode,
+				Type: "test_instance",
+				Name: "foo",
+			}.Instance(addrs.NoKey).Absolute(addrs.RootModuleInstance),
+			&states.ResourceInstanceObjectSrc{
+				AttrsJSON: []byte(`{"id":"bar"}`),
+				Status:    states.ObjectTainted,
 			},
-			&terraform.ModuleState{
-				Path: []string{"root", "child"},
-				Resources: map[string]*terraform.ResourceState{
-					"test_instance.blah": &terraform.ResourceState{
-						Type: "test_instance",
-						Primary: &terraform.InstanceState{
-							ID:      "bar",
-							Tainted: true,
-						},
-					},
-				},
+			addrs.AbsProviderConfig{
+				Provider: addrs.NewDefaultProvider("test"),
+				Module:   addrs.RootModule,
 			},
-		},
-	}
+		)
+		s.SetResourceInstanceCurrent(
+			addrs.Resource{
+				Mode: addrs.ManagedResourceMode,
+				Type: "test_instance",
+				Name: "blah",
+			}.Instance(addrs.NoKey).Absolute(addrs.RootModuleInstance.Child("child", addrs.NoKey)),
+			&states.ResourceInstanceObjectSrc{
+				AttrsJSON: []byte(`{"id":"bar"}`),
+				Status:    states.ObjectTainted,
+			},
+			addrs.AbsProviderConfig{
+				Provider: addrs.NewDefaultProvider("test"),
+				Module:   addrs.RootModule,
+			},
+		)
+	})
 	statePath := testStateFile(t, state)
 
 	ui := new(cli.MockUi)
@@ -415,20 +482,21 @@ func TestUntaint_module(t *testing.T) {
 	}
 
 	args := []string{
-		"-module=child",
 		"-state", statePath,
-		"test_instance.blah",
+		"module.child.test_instance.blah",
 	}
 	if code := c.Run(args); code != 0 {
-		t.Fatalf("bad: %d\n\n%s", code, ui.ErrorWriter.String())
+		t.Fatalf("command exited with status code %d; want 0\n\n%s", code, ui.ErrorWriter.String())
 	}
 
 	testStateOutput(t, statePath, strings.TrimSpace(`
 test_instance.foo: (tainted)
   ID = bar
+  provider = provider["registry.terraform.io/hashicorp/test"]
 
 module.child:
   test_instance.blah:
     ID = bar
+    provider = provider["registry.terraform.io/hashicorp/test"]
 	`))
 }

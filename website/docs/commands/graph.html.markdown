@@ -16,10 +16,10 @@ The output is in the DOT format, which can be used by
 
 ## Usage
 
-Usage: `terraform graph [options] [DIR]`
+Usage: `terraform graph [options]`
 
-Outputs the visual dependency graph of Terraform resources according to
-configuration files in DIR (or the current directory if omitted).
+Outputs the visual dependency graph of Terraform resources represented by the
+configuration in the current working directory.
 
 The graph is outputted in DOT format. The typical program that can
 read this format is GraphViz, but many web services are also available
@@ -36,9 +36,11 @@ Options:
 * `-draw-cycles`    - Highlight any cycles in the graph with colored edges.
                       This helps when diagnosing cycle errors.
 
-* `-no-color`       - If specified, output won't contain any color.
+* `-type=plan`      - Type of graph to output. Can be: `plan`, `plan-destroy`, `apply`,
+                      `validate`, `input`, `refresh`.
 
-* `-type=plan`      - Type of graph to output. Can be: plan, plan-destroy, apply, legacy.
+* `-module-depth=n` - (deprecated) In prior versions of Terraform, specified the
+                      depth of modules to show in the output.
 
 ## Generating Images
 
